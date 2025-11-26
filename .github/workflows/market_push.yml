@@ -1,0 +1,52 @@
+name: A-Share Daily Push
+
+on:
+  # 定时任务 (UTC 时间，北京时间要 +8)
+  schedule:
+    - cron: '0 2 * * 1-5'  # UTC 02:00 -> 北京 10:00 (早盘)
+    - cron: '30 3 * * 1-5' # UTC 03:30 -> 北京 11:30 (午盘)
+    - cron: '0 7 * * 1-5'  # UTC 07:00 -> 北京 15:00 (收盘)
+  
+  # 手动触发按钮 (重点)
+  workflow_dispatch:
+
+jobs:
+  run_bot:
+    runs-on: ubuntu-latest
+    # 设置时区，方便日志查看
+    env:
+      TZ: Asia/Shanghai
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      # 缓存依赖，加快运行速度
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install Dependencies
+        run: poetry install --no-interaction --no-root
+
+      # 关键：下载中文字体
+      # Github Runner 是 Ubuntu，没有黑体，必须下载
+      - name: Download Chinese Font
+        run: |
+          mkdir -p src
+          # 下载阿里巴巴普惠体或类似开源字体
+          wget -O src/SimHei.ttf https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf
+
+      # 运行脚本
+      - name: Run Market Bot
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: poetry run python -m src.mod
