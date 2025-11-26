@@ -18,7 +18,7 @@ class DataFetcher:
     @staticmethod
     def _rest():
         """强制长休眠：25 ~ 35秒"""
-        t = random.uniform(25.0, 35.0)
+        t = random.uniform(30.0, 35.0)
         print(f"💤 [Fetcher] 冷却 {t:.1f}s ...")
         time.sleep(t)
 

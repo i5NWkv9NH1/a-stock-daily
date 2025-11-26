@@ -36,13 +36,13 @@ jobs:
       - name: Install Dependencies
         run: poetry install --no-interaction --no-root
 
-      # 关键：下载中文字体
-      # Github Runner 是 Ubuntu，没有黑体，必须下载
-      - name: Download Chinese Font
-        run: |
-          mkdir -p src
-          # 下载阿里巴巴普惠体或类似开源字体
-          wget -O src/SimHei.ttf https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf
+      # # 关键：下载中文字体
+      # # Github Runner 是 Ubuntu，没有黑体，必须下载
+      # - name: Download Chinese Font
+      #   run: |
+      #     mkdir -p src
+      #     # 下载阿里巴巴普惠体或类似开源字体
+      #     wget -O src/SimHei.ttf https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf
 
       # 运行脚本
       - name: Run Market Bot

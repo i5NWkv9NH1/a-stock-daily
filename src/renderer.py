@@ -1,4 +1,4 @@
-# Version: v1.8.0
+# Version: v1.9.0
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import pandas as pd
@@ -6,13 +6,20 @@ import io
 import re
 from src.config import Config
 
+# --- 强制字体加载逻辑 ---
+# 在 Linux (Github Actions) 上，这是唯一稳妥的方法
+FONT_PROP = None
 try:
     if Config.FONT_PATH.exists():
-        prop = fm.FontProperties(fname=str(Config.FONT_PATH))
-        plt.rcParams['font.sans-serif'] = [prop.get_name()]
+        # 直接加载文件，创建一个全局的字体属性对象
+        FONT_PROP = fm.FontProperties(fname=str(Config.FONT_PATH))
+        print(f"✅ [Renderer] Loaded font from: {Config.FONT_PATH}")
     else:
-        plt.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS']
-except: pass
+        # 兜底：尝试系统字体 (本地调试用)
+        print(f"⚠️ [Renderer] Font not found at {Config.FONT_PATH}, trying system default.")
+        FONT_PROP = fm.FontProperties(family=['SimHei', 'Arial Unicode MS', 'PingFang SC'])
+except Exception as e:
+    print(f"❌ [Renderer] Font loading failed: {e}")
 
 plt.rcParams['axes.unicode_minus'] = False
 plt.rcParams['savefig.facecolor'] = '#191b1f'
@@ -33,7 +40,6 @@ class Style:
 class ProRenderer:
     def _save(self):
         buf = io.BytesIO()
-        # DPI 150 足够清晰且不会过大
         plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', pad_inches=0.1)
         buf.seek(0)
         plt.close()
@@ -44,8 +50,10 @@ class ProRenderer:
 
     def _draw_header(self, ax, title):
         clean = self._clean_title(title)
+        # ⚠️ 关键修改：fontproperties=FONT_PROP
         ax.text(0.5, 1.01, clean, ha='center', va='bottom', fontsize=16, 
-                color=Style.TEXT_MAIN, fontweight='bold', transform=ax.transAxes)
+                color=Style.TEXT_MAIN, fontweight='bold', transform=ax.transAxes,
+                fontproperties=FONT_PROP) # <---
         ax.plot([0, 1], [1.005, 1.005], color=Style.GOLD, linewidth=2, transform=ax.transAxes)
 
     def draw_table(self, df, title, cols_map):
@@ -62,22 +70,17 @@ class ProRenderer:
         if not valid_cols: return None
         data = data[valid_cols]
         data.columns = new_names
-        
-        # --- 关键修复：防止 FutureWarning ---
-        # 先把所有列转为 object 类型，允许存字符串
         data = data.astype(object)
 
-        # 格式化
+        # ... (数据格式化逻辑保持不变，为了节省篇幅省略，请保留 v1.8.0 的逻辑) ...
+        # 复制 v1.8.0 的格式化循环代码到这里
         for c in data.columns:
-            # 金额 -> 亿
             if any(k in c for k in ['封单', '资金', '市值', '额', '流值']):
                 try:
                     vals = pd.to_numeric(data[c], errors='coerce')
                     mask = vals.notna()
                     data.loc[mask, c] = vals[mask].apply(lambda x: f"{x/100000000:.2f}亿")
                 except: pass
-            
-            # 百分比
             elif any(k in c for k in ['涨跌幅', '换手']):
                 try:
                     vals = pd.to_numeric(data[c], errors='coerce')
@@ -87,8 +90,6 @@ class ProRenderer:
                     else:
                         data.loc[mask, c] = vals[mask].apply(lambda x: f"{x:.2f}%")
                 except: pass
-
-            # 浮点数保留
             elif '现价' in c or '价' in c:
                 try:
                     vals = pd.to_numeric(data[c], errors='coerce')
@@ -109,31 +110,34 @@ class ProRenderer:
         table.auto_set_font_size(False)
         table.set_fontsize(10)
         
+        # ⚠️ 关键修改：遍历所有单元格设置字体
         for (row, col), cell in table.get_celld().items():
             cell.set_linewidth(0)
+            # 强制设置字体属性
+            cell.set_text_props(fontproperties=FONT_PROP) # <---
+            
             if row == 0:
                 cell.set_facecolor(Style.HEADER_BG)
-                cell.set_text_props(color=Style.TEXT_SUB, weight='bold')
+                cell.set_text_props(color=Style.TEXT_SUB, weight='bold', fontproperties=FONT_PROP)
                 cell.set_height(0.06)
             else:
                 bg = Style.ROW_A if row % 2 != 0 else Style.ROW_B
                 cell.set_facecolor(bg)
-                cell.set_text_props(color=Style.TEXT_MAIN)
+                cell.set_text_props(color=Style.TEXT_MAIN, fontproperties=FONT_PROP)
                 cell.set_height(0.05)
                 
                 val = str(cell.get_text().get_text())
                 col_name = data.columns[col]
                 
+                # ... (颜色逻辑保持不变) ...
                 if '涨跌' in col_name or '幅' in col_name:
                     if '-' in val: cell.set_text_props(color=Style.GREEN)
                     elif '0.00' not in val: cell.set_text_props(color=Style.RED)
-                
                 if '连板' in col_name:
                     try:
                         v_num = int(re.sub(r'\D', '', val))
                         if v_num >= 3: cell.set_text_props(color=Style.GOLD, weight='bold')
                     except: pass
-
                 if '理由' in col_name:
                     if '新高' in val: cell.set_text_props(color=Style.BLUE)
                     elif '涨停' in val: cell.set_text_props(color=Style.PURPLE)
@@ -148,7 +152,6 @@ class ProRenderer:
             if not found: return None
             val_col_name = found[0]
             
-        # ⚠️ 限制 Top 30 (Telegram 图片尺寸安全线)
         df = df.head(30).copy() 
         df['val_yi'] = df[val_col_name] / 100000000
         
@@ -167,12 +170,14 @@ class ProRenderer:
         if name_col not in df.columns: name_col = df.columns[0]
 
         ax.set_yticks(y_pos)
-        ax.set_yticklabels(df[name_col], color=Style.TEXT_MAIN, fontsize=10)
+        # ⚠️ 关键修改：设置 Y 轴标签字体
+        ax.set_yticklabels(df[name_col], color=Style.TEXT_MAIN, fontsize=10, fontproperties=FONT_PROP) # <---
         ax.invert_yaxis()
         
         for spine in ax.spines.values(): spine.set_visible(False)
         ax.tick_params(left=False, bottom=False, labelbottom=False)
         
-        ax.bar_label(bars, fmt='%.1f亿', padding=5, color=Style.TEXT_SUB, fontsize=9)
+        # ⚠️ 关键修改：设置数值标签字体
+        ax.bar_label(bars, fmt='%.1f亿', padding=5, color=Style.TEXT_SUB, fontsize=9, fontproperties=FONT_PROP) # <---
         
         return self._save()
